@@ -1,36 +1,102 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AdMob Dashboard
 
-## Getting Started
+A Next.js application for viewing and analyzing AdMob revenue data.
 
-First, run the development server:
+## Features
 
+- Real-time AdMob revenue tracking
+- Detailed analytics with country and app-wise breakdowns
+- Interactive data tables with sorting and filtering
+- Summary views for quick insights
+- Responsive design for all devices
+
+## Setup
+
+1. Clone the repository:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/apdue/admob.git
+cd admob
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Environment Variables:
+All configuration is stored in `src/config/constants.ts`. No additional environment setup is needed as all required values are included in the codebase.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. Run the development server:
+```bash
+npm run dev
+```
 
-## Learn More
+5. Build for production:
+```bash
+npm run build
+```
 
-To learn more about Next.js, take a look at the following resources:
+6. Start production server:
+```bash
+npm start
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Configuration
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+All configuration values are stored in `src/config/constants.ts`. This includes:
 
-## Deploy on Vercel
+- Google Cloud Project ID
+- API Configuration
+- AdMob Settings
+- Date Formats
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## API Routes
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The application includes the following API routes:
+
+- `/api/admob/accounts` - Get AdMob account information
+- `/api/admob/reports` - Generate AdMob reports with customizable parameters
+
+## Development
+
+### Project Structure
+
+```
+admob/
+├── src/
+│   ├── app/
+│   │   ├── api/         # API routes
+│   │   ├── components/  # React components
+│   │   └── page.tsx     # Main page
+│   └── config/
+│       └── constants.ts # Configuration
+├── public/             # Static files
+└── package.json       # Dependencies and scripts
+```
+
+### Technologies Used
+
+- Next.js 14
+- React 18
+- TypeScript
+- Tailwind CSS
+- Google AdMob API
+
+## Production Deployment
+
+1. Push to the main branch:
+```bash
+git add .
+git commit -m "your commit message"
+git push origin main
+```
+
+2. Deploy to your hosting platform (e.g., Vercel)
+
+## License
+
+MIT License - See LICENSE file for details
+
+## Support
+
+For support, please open an issue in the GitHub repository.
