@@ -1,28 +1,13 @@
 import { NextResponse } from 'next/server';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 async function getAccessToken() {
   try {
-    // Get the service account key from environment variable
-    const serviceAccountKey = process.env.GOOGLE_APPLICATION_CREDENTIALS || '';
-    
-    // Make a request to get an access token
-    const response = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-        assertion: serviceAccountKey,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to get access token');
-    }
-
-    const data = await response.json();
-    return data.access_token;
+    const { stdout } = await execAsync('gcloud auth application-default print-access-token');
+    return stdout.trim();
   } catch (error) {
     console.error('Error getting access token:', error);
     throw new Error('Failed to get access token');

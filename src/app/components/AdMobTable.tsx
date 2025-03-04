@@ -30,11 +30,10 @@ interface ReportRow {
   row: Row;
 }
 
-interface ReportData extends Array<ReportRow | { header: Record<string, unknown> } | { footer: Record<string, unknown> }> {}
+interface ReportData extends Array<ReportRow | { header: any } | { footer: any }> {}
 
 interface AdMobTableProps {
   data: ReportData | null;
-  isLoading?: boolean;
 }
 
 interface Column {
@@ -43,22 +42,6 @@ interface Column {
   visible: boolean;
   sortable: boolean;
   align: 'left' | 'right';
-}
-
-interface TableRowProps {
-  row: {
-    date: string;
-    dateRaw: string;
-    country: string;
-    countryCode: string;
-    app: string;
-    appId: string;
-    revenue: number;
-    impressions: number;
-    clicks: number;
-  };
-  index: number;
-  columns: Column[];
 }
 
 const formatCurrency = (microsValue: string) => {
@@ -76,7 +59,7 @@ const formatNumber = (value: string) => {
 // Country code to full name mapping
 const countryNames = new Intl.DisplayNames(['en'], { type: 'region' });
 
-const AdMobTable: React.FC<AdMobTableProps> = ({ data, isLoading = false }) => {
+const AdMobTable: React.FC<AdMobTableProps> = ({ data }) => {
   const [sortConfig, setSortConfig] = useState<{
     key: string;
     direction: 'ascending' | 'descending';
@@ -100,9 +83,6 @@ const AdMobTable: React.FC<AdMobTableProps> = ({ data, isLoading = false }) => {
     { key: 'clicks', label: 'Clicks', visible: true, sortable: true, align: 'right' },
   ]);
 
-  // Add error state
-  const [error, setError] = useState<string | null>(null);
-
   const processedData = useMemo(() => {
     if (!data || !Array.isArray(data)) {
       return {
@@ -113,128 +93,102 @@ const AdMobTable: React.FC<AdMobTableProps> = ({ data, isLoading = false }) => {
       };
     }
 
-    try {
-      const rows = data
-        .filter((item): item is ReportRow => 'row' in item)
-        .map(item => {
-          try {
-            const row = item.row;
-            const countryCode = row.dimensionValues.COUNTRY.value;
-            let countryName;
-            try {
-              countryName = countryNames.of(countryCode) || countryCode;
-            } catch {
-              countryName = countryCode;
-            }
-            
-            // Parse and format date from YYYYMMDD format
-            const dateStr = row.dimensionValues.DATE.value;
-            const year = parseInt(dateStr.substring(0, 4));
-            const month = parseInt(dateStr.substring(4, 6)) - 1;
-            const day = parseInt(dateStr.substring(6, 8));
-            const date = new Date(year, month, day);
-            
-            // Validate date
-            if (isNaN(date.getTime())) {
-              throw new Error('Invalid date');
-            }
-            
-            const formattedDate = format(date, 'MMM d, yyyy');
-            
-            return {
-              date: formattedDate,
-              dateRaw: dateStr,
-              country: countryName,
-              countryCode: countryCode,
-              app: row.dimensionValues.APP.displayLabel || row.dimensionValues.APP.value,
-              appId: row.dimensionValues.APP.value,
-              revenue: parseFloat(row.metricValues.ESTIMATED_EARNINGS.microsValue || '0') / 1000000,
-              impressions: parseInt(row.metricValues.IMPRESSIONS.integerValue || '0'),
-              clicks: parseInt(row.metricValues.CLICKS.integerValue || '0'),
-            };
-          } catch (err) {
-            console.error('Error processing row:', err);
-            return null;
-          }
-        })
-        .filter((row): row is NonNullable<typeof row> => row !== null);
-
-      // Calculate summaries
-      const summaryByCountry = new Map();
-      const summaryByApp = new Map();
-      const totals = { revenue: 0, impressions: 0, clicks: 0 };
-
-      rows.forEach(row => {
-        // Country summary
-        if (!summaryByCountry.has(row.country)) {
-          summaryByCountry.set(row.country, { revenue: 0, impressions: 0, clicks: 0 });
+    const rows = data
+      .filter((item): item is ReportRow => 'row' in item)
+      .map(item => {
+        const row = item.row;
+        const countryCode = row.dimensionValues.COUNTRY.value;
+        let countryName;
+        try {
+          countryName = countryNames.of(countryCode) || countryCode;
+        } catch {
+          countryName = countryCode;
         }
-        const countryStats = summaryByCountry.get(row.country);
-        countryStats.revenue += row.revenue;
-        countryStats.impressions += row.impressions;
-        countryStats.clicks += row.clicks;
-
-        // App summary
-        if (!summaryByApp.has(row.app)) {
-          summaryByApp.set(row.app, { revenue: 0, impressions: 0, clicks: 0 });
-        }
-        const appStats = summaryByApp.get(row.app);
-        appStats.revenue += row.revenue;
-        appStats.impressions += row.impressions;
-        appStats.clicks += row.clicks;
-
-        // Overall totals
-        totals.revenue += row.revenue;
-        totals.impressions += row.impressions;
-        totals.clicks += row.clicks;
+        
+        // Parse and format date from YYYYMMDD format
+        const dateStr = row.dimensionValues.DATE.value;
+        const year = dateStr.substring(0, 4);
+        const month = dateStr.substring(4, 6);
+        const day = dateStr.substring(6, 8);
+        const date = parse(`${year}-${month}-${day}`, 'yyyy-MM-dd', new Date());
+        const formattedDate = format(date, 'MMM d, yyyy');
+        
+        return {
+          date: formattedDate,
+          dateRaw: `${year}-${month}-${day}`, // Store in yyyy-MM-dd format for sorting
+          country: countryName,
+          countryCode: countryCode,
+          app: row.dimensionValues.APP.displayLabel || row.dimensionValues.APP.value,
+          appId: row.dimensionValues.APP.value,
+          revenue: parseFloat(row.metricValues.ESTIMATED_EARNINGS.microsValue || '0') / 1000000,
+          impressions: parseInt(row.metricValues.IMPRESSIONS.integerValue || '0'),
+          clicks: parseInt(row.metricValues.CLICKS.integerValue || '0'),
+        };
       });
 
-      // Sort data
-      const sortedRows = [...rows].sort((a, b) => {
-        if (sortConfig.key === 'date') {
-          return sortConfig.direction === 'ascending'
-            ? a.dateRaw.localeCompare(b.dateRaw)
-            : b.dateRaw.localeCompare(a.dateRaw);
-        }
-        if (sortConfig.key === 'country' || sortConfig.key === 'app') {
-          return sortConfig.direction === 'ascending'
-            ? a[sortConfig.key].localeCompare(b[sortConfig.key])
-            : b[sortConfig.key].localeCompare(a[sortConfig.key]);
-        }
+    // Calculate summaries
+    const summaryByCountry = new Map();
+    const summaryByApp = new Map();
+    const totals = { revenue: 0, impressions: 0, clicks: 0 };
+
+    rows.forEach(row => {
+      // Country summary
+      if (!summaryByCountry.has(row.country)) {
+        summaryByCountry.set(row.country, { revenue: 0, impressions: 0, clicks: 0 });
+      }
+      const countryStats = summaryByCountry.get(row.country);
+      countryStats.revenue += row.revenue;
+      countryStats.impressions += row.impressions;
+      countryStats.clicks += row.clicks;
+
+      // App summary
+      if (!summaryByApp.has(row.app)) {
+        summaryByApp.set(row.app, { revenue: 0, impressions: 0, clicks: 0 });
+      }
+      const appStats = summaryByApp.get(row.app);
+      appStats.revenue += row.revenue;
+      appStats.impressions += row.impressions;
+      appStats.clicks += row.clicks;
+
+      // Overall totals
+      totals.revenue += row.revenue;
+      totals.impressions += row.impressions;
+      totals.clicks += row.clicks;
+    });
+
+    // Sort data
+    const sortedRows = [...rows].sort((a, b) => {
+      if (sortConfig.key === 'date') {
         return sortConfig.direction === 'ascending'
-          ? (a[sortConfig.key as keyof typeof a] as number) - (b[sortConfig.key as keyof typeof b] as number)
-          : (b[sortConfig.key as keyof typeof b] as number) - (a[sortConfig.key as keyof typeof a] as number);
-      });
+          ? a.dateRaw.localeCompare(b.dateRaw)
+          : b.dateRaw.localeCompare(a.dateRaw);
+      }
+      if (sortConfig.key === 'country' || sortConfig.key === 'app') {
+        return sortConfig.direction === 'ascending'
+          ? a[sortConfig.key].localeCompare(b[sortConfig.key])
+          : b[sortConfig.key].localeCompare(a[sortConfig.key]);
+      }
+      return sortConfig.direction === 'ascending'
+        ? (a[sortConfig.key as keyof typeof a] as number) - (b[sortConfig.key as keyof typeof b] as number)
+        : (b[sortConfig.key as keyof typeof b] as number) - (a[sortConfig.key as keyof typeof a] as number);
+    });
 
-      return {
-        rows: sortedRows,
-        summaryByCountry,
-        summaryByApp,
-        totals,
-      };
-    } catch (err) {
-      console.error('Error processing data:', err);
-      setError('Error processing data. Please try again.');
-      return {
-        rows: [],
-        summaryByCountry: new Map(),
-        summaryByApp: new Map(),
-        totals: { revenue: 0, impressions: 0, clicks: 0 },
-      };
-    }
-  }, [data, sortConfig, countryNames]);
+    return {
+      rows: sortedRows,
+      summaryByCountry,
+      summaryByApp,
+      totals,
+    };
+  }, [data, sortConfig]);
 
-  // Show loading state
-  if (isLoading) {
-    return (
-      <div className="text-center py-4 text-gray-500">
-        <div className="animate-spin inline-block w-6 h-6 border-2 border-current border-t-transparent rounded-full mb-2" aria-hidden="true"></div>
-        <div>Loading data...</div>
-      </div>
-    );
-  }
+  const uniqueDates = useMemo(() => {
+    return Array.from(new Set(processedData.rows.map(row => row.date))).sort((a, b) => {
+      const dateA = parse(a, 'MMM d, yyyy', new Date());
+      const dateB = parse(b, 'MMM d, yyyy', new Date());
+      return dateB.getTime() - dateA.getTime();
+    });
+  }, [processedData.rows]);
 
-  // Memoize filtered rows
   const filteredRows = useMemo(() => {
     return processedData.rows.filter(row => {
       const matchesCountry = !countryFilter || 
@@ -247,25 +201,12 @@ const AdMobTable: React.FC<AdMobTableProps> = ({ data, isLoading = false }) => {
     });
   }, [processedData.rows, countryFilter, appFilter, dateFilter]);
 
-  // Calculate page count
   const pageCount = Math.ceil(filteredRows.length / rowsPerPage);
+  const paginatedRows = filteredRows.slice(
+    (currentPage - 1) * rowsPerPage,
+    currentPage * rowsPerPage
+  );
 
-  // Memoize paginated rows
-  const paginatedRows = useMemo(() => {
-    const startIndex = (currentPage - 1) * rowsPerPage;
-    return filteredRows.slice(startIndex, startIndex + rowsPerPage);
-  }, [filteredRows, currentPage, rowsPerPage]);
-
-  // Memoize unique dates
-  const uniqueDates = useMemo(() => {
-    return Array.from(new Set(processedData.rows.map(row => row.date))).sort((a, b) => {
-      const dateA = new Date(a);
-      const dateB = new Date(b);
-      return dateB.getTime() - dateA.getTime();
-    });
-  }, [processedData.rows]);
-
-  // Memoize unique countries and apps
   const uniqueCountries = useMemo(() => {
     return Array.from(new Set(processedData.rows.map(row => row.country))).sort();
   }, [processedData.rows]);
@@ -273,39 +214,6 @@ const AdMobTable: React.FC<AdMobTableProps> = ({ data, isLoading = false }) => {
   const uniqueApps = useMemo(() => {
     return Array.from(new Set(processedData.rows.map(row => row.app))).sort();
   }, [processedData.rows]);
-
-  // Table row component
-  const TableRow = ({ row, index, columns }: TableRowProps) => (
-    <tr
-      key={`${row.dateRaw}-${row.countryCode}-${row.appId}-${index}`}
-      className="border-t border-gray-100 hover:bg-gray-50"
-    >
-      {columns.filter(col => col.visible).map(column => (
-        <td
-          key={column.key}
-          className={`px-4 py-2 ${column.align === 'right' ? 'text-right' : 'text-left'}`}
-        >
-          {column.key === 'app' ? (
-            <div>
-              <div>{row.app}</div>
-              <div className="text-xs text-gray-500">{row.appId}</div>
-            </div>
-          ) : column.key === 'revenue' ? (
-            new Intl.NumberFormat('en-US', {
-              style: 'currency',
-              currency: 'USD',
-            }).format(row.revenue)
-          ) : column.key === 'impressions' ? (
-            row.impressions.toLocaleString()
-          ) : column.key === 'clicks' ? (
-            row.clicks.toLocaleString()
-          ) : (
-            row[column.key as keyof typeof row]
-          )}
-        </td>
-      ))}
-    </tr>
-  );
 
   const toggleColumnVisibility = (columnKey: string) => {
     setColumns(prevColumns =>
@@ -324,15 +232,6 @@ const AdMobTable: React.FC<AdMobTableProps> = ({ data, isLoading = false }) => {
           : 'ascending',
     }));
   };
-
-  // Show error state if there's an error
-  if (error) {
-    return (
-      <div className="text-center py-4 text-red-500">
-        {error}
-      </div>
-    );
-  }
 
   if (!processedData.rows.length) {
     return (
@@ -541,7 +440,35 @@ const AdMobTable: React.FC<AdMobTableProps> = ({ data, isLoading = false }) => {
         </thead>
         <tbody>
           {paginatedRows.map((row, index) => (
-            <TableRow key={`${row.dateRaw}-${row.countryCode}-${row.appId}-${index}`} row={row} index={index} columns={columns} />
+            <tr
+              key={`${row.dateRaw}-${row.countryCode}-${row.appId}-${index}`}
+              className="border-t border-gray-100 hover:bg-gray-50"
+            >
+              {columns.filter(col => col.visible).map(column => (
+                <td
+                  key={column.key}
+                  className={`px-4 py-2 ${column.align === 'right' ? 'text-right' : 'text-left'}`}
+                >
+                  {column.key === 'app' ? (
+                    <div>
+                      <div>{row.app}</div>
+                      <div className="text-xs text-gray-500">{row.appId}</div>
+                    </div>
+                  ) : column.key === 'revenue' ? (
+                    new Intl.NumberFormat('en-US', {
+                      style: 'currency',
+                      currency: 'USD',
+                    }).format(row.revenue)
+                  ) : column.key === 'impressions' ? (
+                    row.impressions.toLocaleString()
+                  ) : column.key === 'clicks' ? (
+                    row.clicks.toLocaleString()
+                  ) : (
+                    row[column.key as keyof typeof row]
+                  )}
+                </td>
+              ))}
+            </tr>
           ))}
         </tbody>
         <tfoot>
@@ -672,8 +599,5 @@ const AdMobTable: React.FC<AdMobTableProps> = ({ data, isLoading = false }) => {
     </div>
   );
 };
-
-// Add display name for better debugging
-AdMobTable.displayName = 'AdMobTable';
 
 export default AdMobTable; 
