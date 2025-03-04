@@ -30,7 +30,7 @@ interface ReportRow {
   row: Row;
 }
 
-interface ReportData extends Array<ReportRow | { header: any } | { footer: any }> {}
+interface ReportData extends Array<ReportRow | { header: Record<string, unknown> } | { footer: Record<string, unknown> }> {}
 
 interface AdMobTableProps {
   data: ReportData | null;
@@ -43,6 +43,22 @@ interface Column {
   visible: boolean;
   sortable: boolean;
   align: 'left' | 'right';
+}
+
+interface TableRowProps {
+  row: {
+    date: string;
+    dateRaw: string;
+    country: string;
+    countryCode: string;
+    app: string;
+    appId: string;
+    revenue: number;
+    impressions: number;
+    clicks: number;
+  };
+  index: number;
+  columns: Column[];
 }
 
 const formatCurrency = (microsValue: string) => {
@@ -88,16 +104,16 @@ const AdMobTable: React.FC<AdMobTableProps> = ({ data, isLoading = false }) => {
   const [error, setError] = useState<string | null>(null);
 
   const processedData = useMemo(() => {
-    try {
-      if (!data || !Array.isArray(data)) {
-        return {
-          rows: [],
-          summaryByCountry: new Map(),
-          summaryByApp: new Map(),
-          totals: { revenue: 0, impressions: 0, clicks: 0 },
-        };
-      }
+    if (!data || !Array.isArray(data)) {
+      return {
+        rows: [],
+        summaryByCountry: new Map(),
+        summaryByApp: new Map(),
+        totals: { revenue: 0, impressions: 0, clicks: 0 },
+      };
+    }
 
+    try {
       const rows = data
         .filter((item): item is ReportRow => 'row' in item)
         .map(item => {
@@ -206,15 +222,7 @@ const AdMobTable: React.FC<AdMobTableProps> = ({ data, isLoading = false }) => {
         totals: { revenue: 0, impressions: 0, clicks: 0 },
       };
     }
-  }, [data, sortConfig]);
-
-  const uniqueDates = useMemo(() => {
-    return Array.from(new Set(processedData.rows.map(row => row.date))).sort((a, b) => {
-      const dateA = parse(a, 'MMM d, yyyy', new Date());
-      const dateB = parse(b, 'MMM d, yyyy', new Date());
-      return dateB.getTime() - dateA.getTime();
-    });
-  }, [processedData.rows]);
+  }, [data, sortConfig, countryNames]);
 
   // Show loading state
   if (isLoading) {
@@ -226,7 +234,7 @@ const AdMobTable: React.FC<AdMobTableProps> = ({ data, isLoading = false }) => {
     );
   }
 
-  // Memoize filtered rows to prevent unnecessary recalculations
+  // Memoize filtered rows
   const filteredRows = useMemo(() => {
     return processedData.rows.filter(row => {
       const matchesCountry = !countryFilter || 
@@ -239,50 +247,25 @@ const AdMobTable: React.FC<AdMobTableProps> = ({ data, isLoading = false }) => {
     });
   }, [processedData.rows, countryFilter, appFilter, dateFilter]);
 
+  // Calculate page count
+  const pageCount = Math.ceil(filteredRows.length / rowsPerPage);
+
   // Memoize paginated rows
   const paginatedRows = useMemo(() => {
     const startIndex = (currentPage - 1) * rowsPerPage;
     return filteredRows.slice(startIndex, startIndex + rowsPerPage);
   }, [filteredRows, currentPage, rowsPerPage]);
 
-  // Calculate page count
-  const pageCount = Math.ceil(filteredRows.length / rowsPerPage);
+  // Memoize unique dates
+  const uniqueDates = useMemo(() => {
+    return Array.from(new Set(processedData.rows.map(row => row.date))).sort((a, b) => {
+      const dateA = new Date(a);
+      const dateB = new Date(b);
+      return dateB.getTime() - dateA.getTime();
+    });
+  }, [processedData.rows]);
 
-  // Memoize table row rendering
-  const TableRow = useMemo(() => {
-    return ({ row, index }: { row: any; index: number }) => (
-      <tr
-        key={`${row.dateRaw}-${row.countryCode}-${row.appId}-${index}`}
-        className="border-t border-gray-100 hover:bg-gray-50"
-      >
-        {columns.filter(col => col.visible).map(column => (
-          <td
-            key={column.key}
-            className={`px-4 py-2 ${column.align === 'right' ? 'text-right' : 'text-left'}`}
-          >
-            {column.key === 'app' ? (
-              <div>
-                <div>{row.app}</div>
-                <div className="text-xs text-gray-500">{row.appId}</div>
-              </div>
-            ) : column.key === 'revenue' ? (
-              new Intl.NumberFormat('en-US', {
-                style: 'currency',
-                currency: 'USD',
-              }).format(row.revenue)
-            ) : column.key === 'impressions' ? (
-              row.impressions.toLocaleString()
-            ) : column.key === 'clicks' ? (
-              row.clicks.toLocaleString()
-            ) : (
-              row[column.key as keyof typeof row]
-            )}
-          </td>
-        ))}
-      </tr>
-    );
-  }, [columns]);
-
+  // Memoize unique countries and apps
   const uniqueCountries = useMemo(() => {
     return Array.from(new Set(processedData.rows.map(row => row.country))).sort();
   }, [processedData.rows]);
@@ -290,6 +273,39 @@ const AdMobTable: React.FC<AdMobTableProps> = ({ data, isLoading = false }) => {
   const uniqueApps = useMemo(() => {
     return Array.from(new Set(processedData.rows.map(row => row.app))).sort();
   }, [processedData.rows]);
+
+  // Table row component
+  const TableRow = ({ row, index, columns }: TableRowProps) => (
+    <tr
+      key={`${row.dateRaw}-${row.countryCode}-${row.appId}-${index}`}
+      className="border-t border-gray-100 hover:bg-gray-50"
+    >
+      {columns.filter(col => col.visible).map(column => (
+        <td
+          key={column.key}
+          className={`px-4 py-2 ${column.align === 'right' ? 'text-right' : 'text-left'}`}
+        >
+          {column.key === 'app' ? (
+            <div>
+              <div>{row.app}</div>
+              <div className="text-xs text-gray-500">{row.appId}</div>
+            </div>
+          ) : column.key === 'revenue' ? (
+            new Intl.NumberFormat('en-US', {
+              style: 'currency',
+              currency: 'USD',
+            }).format(row.revenue)
+          ) : column.key === 'impressions' ? (
+            row.impressions.toLocaleString()
+          ) : column.key === 'clicks' ? (
+            row.clicks.toLocaleString()
+          ) : (
+            row[column.key as keyof typeof row]
+          )}
+        </td>
+      ))}
+    </tr>
+  );
 
   const toggleColumnVisibility = (columnKey: string) => {
     setColumns(prevColumns =>
@@ -525,7 +541,7 @@ const AdMobTable: React.FC<AdMobTableProps> = ({ data, isLoading = false }) => {
         </thead>
         <tbody>
           {paginatedRows.map((row, index) => (
-            <TableRow key={`${row.dateRaw}-${row.countryCode}-${row.appId}-${index}`} row={row} index={index} />
+            <TableRow key={`${row.dateRaw}-${row.countryCode}-${row.appId}-${index}`} row={row} index={index} columns={columns} />
           ))}
         </tbody>
         <tfoot>

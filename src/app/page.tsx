@@ -1,11 +1,45 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { format, subDays } from 'date-fns';
 
-const RevenueChart = dynamic(() => import('./components/RevenueChart'), { ssr: false });
-const AdMobTable = dynamic(() => import('./components/AdMobTable'), { ssr: false });
+const RevenueChart = dynamic(() => import('./components/RevenueChart'), {
+  ssr: false,
+});
+
+const AdMobTable = dynamic(() => import('./components/AdMobTable'), {
+  ssr: false,
+});
+
+interface DimensionValue {
+  value: string;
+  displayLabel?: string;
+}
+
+interface MetricValue {
+  microsValue?: string;
+  integerValue?: string;
+}
+
+interface Row {
+  dimensionValues: {
+    DATE: DimensionValue;
+    COUNTRY?: DimensionValue;
+    APP?: DimensionValue;
+  };
+  metricValues: {
+    ESTIMATED_EARNINGS: MetricValue;
+    IMPRESSIONS: MetricValue;
+    CLICKS: MetricValue;
+  };
+}
+
+interface ReportRow {
+  row: Row;
+}
+
+type ReportData = Array<ReportRow | { header: Record<string, unknown> } | { footer: Record<string, unknown> }>;
 
 const formatCurrency = (microsValue: string) => {
   const dollars = parseFloat(microsValue) / 1000000;
@@ -22,51 +56,55 @@ const formatNumber = (value: string) => {
 export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [accountData, setAccountData] = useState<any>(null);
-  const [reportData, setReportData] = useState<any>(null);
+  const [reportData, setReportData] = useState<ReportData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState({
     startDate: format(subDays(new Date(), 30), 'yyyy-MM-dd'),
     endDate: format(new Date(), 'yyyy-MM-dd'),
   });
 
-  useEffect(() => {
-    console.log('Date range:', dateRange);
-    fetchData();
-  }, [dateRange]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
 
-      // Fetch account data
+      // Get AdMob account
       const accountResponse = await fetch('/api/admob/accounts');
-      if (!accountResponse.ok) {
-        throw new Error('Failed to fetch AdMob account data');
-      }
-      const accountResult = await accountResponse.json();
-      setAccountData(accountResult);
+      const accountData = await accountResponse.json();
 
-      // Fetch report data
+      if (!accountData.account) {
+        throw new Error('No AdMob account found');
+      }
+
+      // Get report data
       const reportResponse = await fetch('/api/admob/reports', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(dateRange),
+        body: JSON.stringify({
+          accountId: accountData.account,
+        }),
       });
-      if (!reportResponse.ok) {
-        throw new Error('Failed to fetch AdMob report data');
+
+      const data = await reportResponse.json();
+
+      if (!data) {
+        throw new Error('No report data received');
       }
-      const reportResult = await reportResponse.json();
-      console.log('Report Data:', reportResult);
-      setReportData(reportResult);
+
+      setReportData(data as ReportData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : 'An error occurred while fetching data');
+      console.error('Error fetching data:', err);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const calculateTotals = () => {
     if (!reportData || !Array.isArray(reportData)) {
@@ -112,98 +150,32 @@ export default function Home() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="bg-red-50 p-4 rounded-lg">
-          <h2 className="text-red-800 text-lg font-semibold">Error</h2>
-          <p className="text-red-600">{error}</p>
+      <div className="min-h-screen bg-gray-50 p-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-8">
+            <p className="text-red-700">{error}</p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-        <h1 className="text-3xl font-bold text-gray-800 mb-6">AdMob Dashboard</h1>
-        
-        {/* Date Range Selector */}
-        <div className="flex gap-4 mb-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-            <input
-              type="date"
-              value={dateRange.startDate}
-              onChange={(e) => setDateRange(prev => ({ ...prev, startDate: e.target.value }))}
-              className="border rounded-md p-2"
-            />
+    <main className="min-h-screen bg-gray-50 p-8">
+      <div className="max-w-7xl mx-auto space-y-8">
+        <section>
+          <h2 className="text-2xl font-semibold mb-4">Revenue Overview</h2>
+          <div className="bg-white rounded-lg shadow p-6 h-[400px]">
+            <RevenueChart data={reportData} />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-            <input
-              type="date"
-              value={dateRange.endDate}
-              onChange={(e) => setDateRange(prev => ({ ...prev, endDate: e.target.value }))}
-              className="border rounded-md p-2"
-            />
+        </section>
+
+        <section>
+          <h2 className="text-2xl font-semibold mb-4">Detailed Report</h2>
+          <div className="bg-white rounded-lg shadow p-6">
+            <AdMobTable data={reportData} isLoading={isLoading} />
           </div>
-        </div>
-
-        {isLoading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {/* Summary Cards */}
-            {totals && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-blue-50 p-6 rounded-lg shadow">
-                  <h3 className="text-lg font-semibold text-blue-800 mb-2">Total Revenue</h3>
-                  <p className="text-2xl font-bold text-blue-600">
-                    {new Intl.NumberFormat('en-US', {
-                      style: 'currency',
-                      currency: 'USD',
-                    }).format(totals.revenue)}
-                  </p>
-                </div>
-                <div className="bg-green-50 p-6 rounded-lg shadow">
-                  <h3 className="text-lg font-semibold text-green-800 mb-2">Total Impressions</h3>
-                  <p className="text-2xl font-bold text-green-600">
-                    {totals.impressions.toLocaleString()}
-                  </p>
-                </div>
-                <div className="bg-yellow-50 p-6 rounded-lg shadow">
-                  <h3 className="text-lg font-semibold text-yellow-800 mb-2">Total Clicks</h3>
-                  <p className="text-2xl font-bold text-yellow-600">
-                    {totals.clicks.toLocaleString()}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Revenue Chart */}
-            <div className="bg-gray-50 p-6 rounded-lg">
-              <h2 className="text-xl font-semibold mb-4">Revenue Chart</h2>
-              <div className="h-[400px]">
-                <RevenueChart data={reportData} />
-              </div>
-            </div>
-
-            {/* Detailed Table */}
-            <div className="bg-gray-50 p-6 rounded-lg">
-              <h2 className="text-xl font-semibold mb-4">Detailed Report</h2>
-              <AdMobTable data={reportData} />
-            </div>
-
-            {/* Account Details */}
-            <div className="bg-gray-50 p-6 rounded-lg">
-              <h2 className="text-xl font-semibold mb-4">Account Details</h2>
-              <pre className="bg-white p-4 rounded overflow-auto">
-                {JSON.stringify(accountData, null, 2)}
-              </pre>
-            </div>
-          </div>
-        )}
+        </section>
       </div>
     </main>
   );
